@@ -1,10 +1,22 @@
 use eframe::epaint::Color32;
+use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
 
 #[cfg(target_arch = "wasm32")]
 use web_time::SystemTime;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SerializableEvent {
+    pub title: String,
+    pub description: String,
+    pub day: u8,
+    pub month: u8,
+    pub year: i32,
+    pub image_path: Option<String>,
+    pub color: [u8; 4], // [r, g, b, a]
+}
 
 #[derive(Debug, Clone)]
 pub struct Event {
@@ -16,6 +28,24 @@ pub struct Event {
     pub year: i32,
     pub image_path: Option<String>,
     pub color: Color32,
+}
+
+impl Event {
+    pub fn to_serializable(&self) -> SerializableEvent {
+        SerializableEvent {
+            title: self.title.clone(),
+            description: self.description.clone(),
+            day: self.day,
+            month: self.month,
+            year: self.year,
+            image_path: self.image_path.clone(),
+            color: self.color.to_array(),
+        }
+    }
+
+    pub fn from_serializable(s: SerializableEvent) -> Self {
+        Self::new(s.title, s.description, s.day, s.month, s.year, s.image_path)
+    }
 }
 
 impl Event {
@@ -69,7 +99,31 @@ impl Timeline {
         self.events.sort_by_key(|e| e.timestamp);
     }
 
+    pub fn remove_event(&mut self, index: usize) {
+        if index < self.events.len() {
+            self.events.remove(index);
+        }
+    }
+
     pub fn events(&self) -> &[Event] {
         &self.events
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        let serializable: Vec<SerializableEvent> =
+            self.events.iter().map(|e| e.to_serializable()).collect();
+        serde_json::to_string(&serializable)
+    }
+
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        let serializable: Vec<SerializableEvent> = serde_json::from_str(json)?;
+        let mut timeline = Timeline::new();
+        for s in serializable {
+            let mut event = Event::from_serializable(s.clone());
+            event.color =
+                Color32::from_rgba_unmultiplied(s.color[0], s.color[1], s.color[2], s.color[3]);
+            timeline.add_event(event);
+        }
+        Ok(timeline)
     }
 }

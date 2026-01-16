@@ -82,6 +82,8 @@ struct LifelineApp {
     clicked_event_index: Option<usize>,
     frozen_positions: HashMap<usize, (f32, f32)>,
     resume_start_times: HashMap<usize, f32>,
+    // Deletion state
+    event_to_delete: Option<usize>,
     // UI state for adding events
     new_event_title: String,
     new_event_description: String,
@@ -95,40 +97,43 @@ struct LifelineApp {
 }
 
 impl LifelineApp {
+    #[cfg(target_arch = "wasm32")]
+    fn save_to_storage(&self) {
+        if let Ok(json) = self.timeline.to_json() {
+            if let Some(window) = web_sys::window() {
+                if let Ok(Some(storage)) = window.local_storage() {
+                    let _ = storage.set_item("lifeline_events", &json);
+                }
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn load_from_storage() -> Timeline {
+        if let Some(window) = web_sys::window() {
+            if let Ok(Some(storage)) = window.local_storage() {
+                if let Ok(Some(json)) = storage.get_item("lifeline_events") {
+                    if let Ok(timeline) = Timeline::from_json(&json) {
+                        return timeline;
+                    }
+                }
+            }
+        }
+        Timeline::new()
+    }
+
     fn new() -> Self {
         // Generate background cosmic objects
         let stars = stars::generate_stars(150);
         let galaxies = stars::generate_galaxies(4);
         let nebulas = stars::generate_nebulas(3);
 
-        // Create timeline with mock events
-        let mut timeline = Timeline::new();
+        // Create timeline - load from storage in WASM, or create new
+        #[cfg(target_arch = "wasm32")]
+        let timeline = Self::load_from_storage();
 
-        // Golden yellow color for all events
-        let golden_yellow = Color32::from_rgb(255, 215, 0);
-
-        // Add mock events starting from 1996
-        let mut event1 = Event::new(
-            "Thomas was born".to_string(),
-            "On February 21, 1996 Thomas was born.".to_string(),
-            21,
-            2,
-            1996,
-            None,
-        );
-        event1.color = golden_yellow;
-        timeline.add_event(event1);
-
-        let mut event2 = Event::new(
-            "Leia was born".to_string(),
-            "On July 8, 2025 Leia was born.".to_string(),
-            8,
-            7,
-            2025,
-            None,
-        );
-        event2.color = golden_yellow;
-        timeline.add_event(event2);
+        #[cfg(not(target_arch = "wasm32"))]
+        let timeline = Timeline::new();
 
         Self {
             stars,
@@ -144,6 +149,7 @@ impl LifelineApp {
             clicked_event_index: None,
             frozen_positions: HashMap::new(),
             resume_start_times: HashMap::new(),
+            event_to_delete: None,
             new_event_title: String::new(),
             new_event_description: String::new(),
             new_event_day: String::new(),
@@ -309,8 +315,8 @@ impl eframe::App for LifelineApp {
                     self.load_image_texture(ctx, &path);
                 }
 
-                // Draw timeline events (returns clicked event index if any)
-                let new_clicked = event_renderer::render_timeline_events(
+                // Draw timeline events (returns interaction info)
+                let interaction = event_renderer::render_timeline_events(
                     &self.timeline,
                     time,
                     ui,
@@ -322,8 +328,27 @@ impl eframe::App for LifelineApp {
                 );
 
                 // Update clicked state
-                self.clicked_event_index = new_clicked;
+                self.clicked_event_index = interaction.clicked_index;
+
+                // Handle deletion request
+                if let Some(index) = interaction.delete_index {
+                    self.event_to_delete = Some(index);
+                }
             });
+
+        // Process deletion outside of central panel
+        if let Some(index) = self.event_to_delete.take() {
+            self.timeline.remove_event(index);
+
+            // Clear frozen positions and clicked state
+            self.frozen_positions.clear();
+            self.resume_start_times.clear();
+            self.clicked_event_index = None;
+
+            // Save to storage in WASM
+            #[cfg(target_arch = "wasm32")]
+            self.save_to_storage();
+        }
 
         // Bottom panel for adding events (centered)
         egui::TopBottomPanel::bottom("add_event_panel")
@@ -457,6 +482,10 @@ impl eframe::App for LifelineApp {
                                     event.color = golden_yellow;
                                     self.timeline.add_event(event);
 
+                                    // Save to storage in WASM
+                                    #[cfg(target_arch = "wasm32")]
+                                    self.save_to_storage();
+
                                     self.new_event_title.clear();
                                     self.new_event_description.clear();
                                     self.new_event_day.clear();
@@ -486,6 +515,10 @@ impl eframe::App for LifelineApp {
                                     );
                                     event.color = golden_yellow;
                                     self.timeline.add_event(event);
+
+                                    // Save to storage in WASM
+                                    #[cfg(target_arch = "wasm32")]
+                                    self.save_to_storage();
 
                                     self.new_event_title.clear();
                                     self.new_event_description.clear();

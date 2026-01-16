@@ -14,6 +14,11 @@ pub struct Camera {
     pub zoom: f32,
 }
 
+pub struct EventInteraction {
+    pub clicked_index: Option<usize>,
+    pub delete_index: Option<usize>,
+}
+
 pub fn render_timeline_events(
     timeline: &Timeline,
     time: f32,
@@ -23,9 +28,12 @@ pub fn render_timeline_events(
     resume_start_times: &mut std::collections::HashMap<usize, f32>,
     previous_clicked: Option<usize>,
     image_cache: &std::collections::HashMap<String, egui::TextureHandle>,
-) -> Option<usize> {
+) -> EventInteraction {
     if timeline.events().is_empty() {
-        return None;
+        return EventInteraction {
+            clicked_index: None,
+            delete_index: None,
+        };
     }
 
     let rect = ui.available_rect_before_wrap();
@@ -38,8 +46,10 @@ pub fn render_timeline_events(
 
     let pointer_pos = ui.input(|i| i.pointer.hover_pos());
     let is_clicking = ui.input(|i| i.pointer.primary_down());
+    let is_ctrl_held = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
     let mut clicked_event_index = None;
-    let mut hovered_event_data: Option<(Pos2, Event)> = None;
+    let mut hovered_event_data: Option<(Pos2, Event, usize)> = None;
+    let mut delete_event_index = None;
 
     let events = timeline.events();
     if let (Some(first), Some(last)) = (events.first(), events.last()) {
@@ -123,13 +133,18 @@ pub fn render_timeline_events(
 
             // Handle click-to-stop and release-to-resume
             if is_hovered && is_clicking {
-                // Clicking on this event - freeze it
-                if !frozen_positions.contains_key(&i) {
-                    frozen_positions.insert(i, (x, y));
-                    resume_start_times.remove(&i); // Cancel any ongoing resume
+                // Ctrl+Click to delete
+                if is_ctrl_held {
+                    delete_event_index = Some(i);
+                } else {
+                    // Regular click - freeze it
+                    if !frozen_positions.contains_key(&i) {
+                        frozen_positions.insert(i, (x, y));
+                        resume_start_times.remove(&i); // Cancel any ongoing resume
+                    }
+                    clicked_event_index = Some(i);
+                    hovered_event_data = Some((pointer_pos.unwrap(), event.clone(), i));
                 }
-                clicked_event_index = Some(i);
-                hovered_event_data = Some((pointer_pos.unwrap(), event.clone()));
             } else if Some(i) == previous_clicked && !is_clicking {
                 // Was clicked last frame but released now - start smooth resume
                 if frozen_positions.contains_key(&i) && !resume_start_times.contains_key(&i) {
@@ -144,7 +159,7 @@ pub fn render_timeline_events(
 
             // Show tooltip on hover
             if is_hovered {
-                hovered_event_data = Some((pointer_pos.unwrap(), event.clone()));
+                hovered_event_data = Some((pointer_pos.unwrap(), event.clone(), i));
             }
 
             render_burning_star(painter, event_pos, i, time, event, is_hovered);
@@ -153,11 +168,14 @@ pub fn render_timeline_events(
     }
 
     // Render tooltip after releasing painter borrow
-    if let Some((pos, event)) = hovered_event_data {
+    if let Some((pos, event, _index)) = hovered_event_data {
         render_event_tooltip(ui, pos, &event, image_cache);
     }
 
-    clicked_event_index
+    EventInteraction {
+        clicked_index: clicked_event_index,
+        delete_index: delete_event_index,
+    }
 }
 
 fn render_burning_star(
@@ -420,6 +438,16 @@ fn render_event_tooltip(
                                 );
                             }
                         }
+
+                        // Hint text
+                        ui.add_space(8.0);
+                        ui.separator();
+                        ui.add_space(4.0);
+                        ui.label(
+                            egui::RichText::new("💡 Ctrl+Click to delete")
+                                .color(Color32::from_gray(180))
+                                .italics(),
+                        );
                     });
                 });
         });

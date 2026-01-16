@@ -8,11 +8,15 @@ A beautiful, interactive timeline application built with Rust, egui, and WebAsse
 
 - **Interactive Timeline**: Add events with full date stamps (day, month, year)
 - **Image Support**: Attach images to events (file picker on both native and web)
+- **Event Management**: Delete events with a single click
+- **Persistent Storage**: Events automatically saved in browser (WASM only)
 - **Animated Background**: Beautiful cosmic scenery with parallax effects
 - **Camera Controls**: 
-  - WASD for panning
-  - Mouse wheel for zooming
-  - Click events to freeze their animation
+  - WASD for panning (desktop)
+  - Touch drag for panning (mobile)
+  - Mouse wheel for zooming (desktop)
+  - Pinch to zoom (mobile)
+  - Click/tap events to freeze their animation
 - **Cross-Platform**: Runs as native desktop app or in web browsers
 
 ## Live Demo
@@ -74,6 +78,14 @@ The workflow is configured in `.github/workflows/deploy.yml`
    - Year
    - Optional: Image (click "Browse..." to upload)
 3. Click "Add to Timeline" or "Today" for current date
+
+### Deleting Events
+
+1. Hover over any event to open the details window
+2. The window stays open when you move your mouse to it
+3. Scroll to the bottom and click the "🗑 Delete Event" button
+4. The event will be removed immediately
+5. In the web version, changes are automatically saved to browser storage
 
 ### Navigation
 
