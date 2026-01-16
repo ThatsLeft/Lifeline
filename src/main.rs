@@ -124,7 +124,7 @@ impl LifelineApp {
             "On July 8, 2025 Leia was born.".to_string(),
             8,
             7,
-            1996,
+            2025,
             None,
         );
         event2.color = golden_yellow;
